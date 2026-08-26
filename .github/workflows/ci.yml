@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DATABASE_URL: postgresql+asyncpg://healthgraph:healthgraph@localhost:5432/healthgraph
+  REDIS_URL: redis://localhost:6379/0
+  SECRET_KEY: ci-test-secret-key-not-for-production
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: healthgraph
+          POSTGRES_PASSWORD: healthgraph
+          POSTGRES_DB: healthgraph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U healthgraph"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Apply database migrations
+        run: alembic upgrade head
+
+      - name: Verify migrations match the models (no drift)
+        run: alembic check
+
+      - name: Run tests with coverage
+        run: >
+          pytest
+          --cov=app
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=80
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
