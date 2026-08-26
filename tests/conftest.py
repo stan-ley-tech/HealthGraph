@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator  # noqa: E402
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
+from redis.asyncio import Redis  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,
@@ -81,6 +82,19 @@ async def client(db_session: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http_client:
         yield http_client
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def redis_client() -> AsyncIterator[Redis]:
+    """Own client per test, for the same reason `db_session` uses its own
+    engine: a shared async client's connections bind to the event loop
+    active when they're first opened, and each test function gets a
+    fresh loop by default."""
+    client = Redis.from_url(get_settings().redis_url, decode_responses=True)
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 @pytest.fixture
