@@ -114,3 +114,23 @@ class ProcedureRepository(PatientScopedRepository[Procedure]):
     model = Procedure
     patient_id_column = Procedure.patient_id
     sort_column = Procedure.performed_at
+
+    def create(
+        self,
+        *,
+        patient_id: UUID,
+        performed_by: UUID,
+        cpt_code: str,
+        description: str,
+        performed_at: datetime,
+        encounter_id: UUID | None = None,
+    ) -> Procedure:
+        procedure = Procedure(
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            performed_by=performed_by,
+            cpt_code=cpt_code,
+            description=description,
+            performed_at=performed_at,
+        )
+        return self.add(procedure)
