@@ -1,0 +1,441 @@
+# Generated from the live schema — do not hand-edit.
+# Regenerate with:
+#   python -c "from app.api.graphql.schema import schema; print(schema)" > docs/schema.graphql
+
+enum AbnormalFlag {
+  NORMAL
+  LOW
+  HIGH
+  CRITICAL
+}
+
+input AddAllergyInput {
+  patientId: ID!
+  allergen: String!
+  severity: AllergySeverity!
+  reaction: String = null
+  recordedAt: DateTime = null
+}
+
+input AddDiagnosisInput {
+  patientId: ID!
+  icd10Code: String!
+  description: String!
+  diagnosedAt: DateTime = null
+  encounterId: ID = null
+}
+
+input AddPatientProviderRelationshipInput {
+  patientId: ID!
+  providerId: ID!
+  relationshipType: RelationshipType!
+  startDate: Date = null
+}
+
+"""A known allergy or adverse reaction."""
+type Allergy {
+  id: ID!
+  allergen: String!
+  reaction: String
+  severity: AllergySeverity!
+  recordedAt: DateTime!
+}
+
+enum AllergySeverity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+input CreateEncounterInput {
+  patientId: ID!
+  encounterType: EncounterType!
+  chiefComplaint: String = null
+  startedAt: DateTime = null
+  providerId: ID = null
+}
+
+input CreatePatientInput {
+  mrn: String!
+  firstName: String!
+  lastName: String!
+  dateOfBirth: Date!
+  sex: Sex!
+  phone: String = null
+  email: String = null
+  address: String = null
+  ssn: String = null
+}
+
+"""Date (isoformat)"""
+scalar Date
+
+"""Date with time (isoformat)"""
+scalar DateTime
+
+"""An ICD-10-coded diagnosis."""
+type Diagnosis {
+  id: ID!
+  icd10Code: String!
+  description: String!
+  status: DiagnosisStatus!
+  diagnosedAt: DateTime!
+}
+
+enum DiagnosisStatus {
+  ACTIVE
+  RESOLVED
+  CHRONIC
+}
+
+"""A single clinical visit."""
+type Encounter {
+  id: ID!
+  encounterType: EncounterType!
+  status: EncounterStatus!
+  chiefComplaint: String
+  notes: String
+  startedAt: DateTime!
+  endedAt: DateTime
+
+  """The provider who saw the patient during this encounter."""
+  provider: Provider!
+
+  """The facility where this encounter took place."""
+  facility: Facility!
+}
+
+type EncounterConnection {
+  edges: [EncounterEdge!]!
+  pageInfo: PageInfo!
+}
+
+type EncounterEdge {
+  cursor: String!
+  node: Encounter!
+}
+
+enum EncounterStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum EncounterType {
+  OUTPATIENT
+  INPATIENT
+  EMERGENCY
+  TELEHEALTH
+}
+
+"""A hospital, clinic, lab, or pharmacy."""
+type Facility {
+  id: ID!
+  name: String!
+  facilityType: FacilityType!
+  address: String
+  phone: String
+}
+
+enum FacilityType {
+  HOSPITAL
+  CLINIC
+  LAB
+  PHARMACY
+}
+
+"""A single lab test result."""
+type LabResult {
+  id: ID!
+  testName: String!
+  testCode: String!
+  value: String!
+  unit: String
+  referenceRange: String
+  abnormalFlag: AbnormalFlag!
+  resultedAt: DateTime!
+
+  """The provider who ordered this test."""
+  orderedBy: Provider!
+}
+
+type LabResultConnection {
+  edges: [LabResultEdge!]!
+  pageInfo: PageInfo!
+}
+
+type LabResultEdge {
+  cursor: String!
+  node: LabResult!
+}
+
+"""A prescription."""
+type Medication {
+  id: ID!
+  name: String!
+  dosage: String!
+  frequency: String!
+  route: String
+  status: MedicationStatus!
+  startDate: Date!
+  endDate: Date
+
+  """The provider who prescribed this medication."""
+  prescribedBy: Provider!
+}
+
+type MedicationConnection {
+  edges: [MedicationEdge!]!
+  pageInfo: PageInfo!
+}
+
+type MedicationEdge {
+  cursor: String!
+  node: Medication!
+}
+
+enum MedicationStatus {
+  ACTIVE
+  COMPLETED
+  DISCONTINUED
+}
+
+type Mutation {
+  """Create a new patient record. ADMIN only."""
+  createPatient(input: CreatePatientInput!): Patient!
+
+  """Update a patient's contact info. ADMIN, or the patient themselves."""
+  updatePatientContactInfo(patientId: ID!, input: UpdatePatientContactInfoInput!): Patient!
+
+  """
+  Establish a clinical relationship between a patient and a provider. ADMIN only — this is what grants a DOCTOR/NURSE access to a patient's record.
+  """
+  addPatientProviderRelationship(input: AddPatientProviderRelationshipInput!): PatientProviderRelationship!
+
+  """
+  Record a clinical encounter. Requires an active relationship with the patient.
+  """
+  createEncounter(input: CreateEncounterInput!): Encounter!
+
+  """Add a diagnosis to a patient's record."""
+  addDiagnosis(input: AddDiagnosisInput!): Diagnosis!
+
+  """
+  Prescribe a medication. DOCTOR or ADMIN only — nurses cannot prescribe.
+  """
+  prescribeMedication(input: PrescribeMedicationInput!): Medication!
+
+  """Record a lab result. LAB_TECHNICIAN or ADMIN only."""
+  recordLabResult(input: RecordLabResultInput!): LabResult!
+
+  """Record a vital sign measurement."""
+  recordVitalSign(input: RecordVitalSignInput!): VitalSign!
+
+  """Record a known allergy or adverse reaction."""
+  addAllergy(input: AddAllergyInput!): Allergy!
+}
+
+"""Cursor-pagination metadata, per the Relay Cursor Connections spec."""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+"""A patient and their demographic information."""
+type Patient {
+  id: ID!
+  mrn: String!
+  firstName: String!
+  lastName: String!
+  dateOfBirth: Date!
+  sex: Sex!
+  phone: String
+  email: String
+  address: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+
+  """
+  Social Security Number. Field-level authorization: only visible to the platform admin or the patient themselves, even for a provider who otherwise has full access to this patient's record.
+  """
+  ssn: String
+
+  """
+  This patient's encounters, most recent first (batched via DataLoader — safe to select under a `patients` list without an N+1 query per patient).
+  """
+  encounters(limit: Int! = 20): [Encounter!]!
+
+  """This patient's medications, most recent first."""
+  medications(limit: Int! = 20): [Medication!]!
+
+  """This patient's lab results, most recent first."""
+  labResults(limit: Int! = 20): [LabResult!]!
+
+  """
+  This patient's full clinical history — encounters, diagnoses, medications, lab results, procedures, and vital signs — merged into one reverse-chronological feed.
+  """
+  timeline(limit: Int! = 50): [TimelineEntry!]!
+}
+
+type PatientConnection {
+  edges: [PatientEdge!]!
+  pageInfo: PageInfo!
+}
+
+type PatientEdge {
+  cursor: String!
+  node: Patient!
+}
+
+"""
+A clinical relationship between a patient and a provider — the record that grants a DOCTOR/NURSE access to a patient's data.
+"""
+type PatientProviderRelationship {
+  id: ID!
+  relationshipType: RelationshipType!
+  startDate: Date!
+  endDate: Date
+  active: Boolean!
+}
+
+input PrescribeMedicationInput {
+  patientId: ID!
+  name: String!
+  dosage: String!
+  frequency: String!
+  startDate: Date!
+  route: String = null
+  endDate: Date = null
+  encounterId: ID = null
+  providerId: ID = null
+}
+
+"""A CPT-coded procedure."""
+type Procedure {
+  id: ID!
+  cptCode: String!
+  description: String!
+  performedAt: DateTime!
+
+  """The provider who performed this procedure."""
+  performedBy: Provider!
+}
+
+"""A clinician: doctor, nurse, or lab technician."""
+type Provider {
+  id: ID!
+  firstName: String!
+  lastName: String!
+  npiNumber: String!
+  specialty: String
+
+  """The facility this provider practices at."""
+  facility: Facility!
+}
+
+type Query {
+  """
+  Fetch a single patient by id. Requires an active clinical relationship for DOCTOR/NURSE callers, ownership for PATIENT callers, or the ADMIN role — see the access policy.
+  """
+  patient(id: ID!): Patient
+
+  """
+  Search patients by name, cursor-paginated. Results are scoped to the caller: ADMIN sees everyone, PATIENT sees only themselves, and DOCTOR/NURSE see only patients they have an active clinical relationship with.
+  """
+  patients(name: String = null, first: Int! = 20, after: String = null): PatientConnection!
+
+  """
+  An individual patient's encounters, most recent first, cursor-paginated.
+  """
+  patientEncounters(patientId: ID!, first: Int! = 20, after: String = null): EncounterConnection!
+
+  """
+  An individual patient's medications, most recent first, cursor-paginated.
+  """
+  patientMedications(patientId: ID!, first: Int! = 20, after: String = null): MedicationConnection!
+
+  """
+  An individual patient's lab results, most recent first, cursor-paginated. LAB_TECHNICIAN callers can read this even without a clinical relationship to the patient.
+  """
+  patientLabResults(patientId: ID!, first: Int! = 20, after: String = null): LabResultConnection!
+
+  """
+  A patient's full clinical history — encounters, diagnoses, medications, lab results, procedures, and vital signs — merged into one reverse-chronological feed. This is the query most at risk of N+1 fan-out; see app.services.timeline_service for how batching keeps it to a fixed number of queries per request.
+  """
+  patientTimeline(patientId: ID!, limit: Int! = 50): [TimelineEntry!]!
+}
+
+input RecordLabResultInput {
+  patientId: ID!
+  orderedByProviderId: ID!
+  testName: String!
+  testCode: String!
+  value: String!
+  unit: String = null
+  referenceRange: String = null
+  abnormalFlag: AbnormalFlag = null
+  resultedAt: DateTime = null
+  encounterId: ID = null
+}
+
+input RecordVitalSignInput {
+  patientId: ID!
+  vitalType: VitalSignType!
+  value: Float!
+  unit: String!
+  recordedAt: DateTime = null
+  encounterId: ID = null
+}
+
+enum RelationshipType {
+  PRIMARY_CARE
+  ATTENDING
+  CONSULTING
+  REFERRING
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+"""
+One entry in a patient's chronological timeline. `occurredAt` is normalized across all six underlying event types so clients can sort/display without inspecting which concrete type `event` is.
+"""
+type TimelineEntry {
+  occurredAt: DateTime!
+  event: TimelineEvent!
+}
+
+union TimelineEvent = Encounter | Diagnosis | Medication | LabResult | Procedure | VitalSign
+
+input UpdatePatientContactInfoInput {
+  phone: String = null
+  email: String = null
+  address: String = null
+}
+
+"""A point-in-time vital sign measurement."""
+type VitalSign {
+  id: ID!
+  vitalType: VitalSignType!
+  value: Float!
+  unit: String!
+  recordedAt: DateTime!
+}
+
+enum VitalSignType {
+  BLOOD_PRESSURE
+  HEART_RATE
+  TEMPERATURE
+  RESPIRATORY_RATE
+  OXYGEN_SATURATION
+  WEIGHT
+  HEIGHT
+  BMI
+}
