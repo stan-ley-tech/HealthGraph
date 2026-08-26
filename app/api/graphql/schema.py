@@ -19,8 +19,11 @@ schema = strawberry.Schema(
     query=Query,
     mutation=Mutation,
     extensions=[
-        QueryDepthLimiter(max_depth=settings.graphql_max_query_depth),
-        MaxAliasesLimiter(max_alias_count=15),
-        QueryComplexityLimiter(max_complexity=settings.graphql_max_query_complexity),
+        # Factories, not instances: Strawberry constructs a fresh
+        # extension per request so per-request state can't leak between
+        # concurrent requests.
+        lambda: QueryDepthLimiter(max_depth=settings.graphql_max_query_depth),
+        lambda: MaxAliasesLimiter(max_alias_count=15),
+        lambda: QueryComplexityLimiter(max_complexity=settings.graphql_max_query_complexity),
     ],
 )
