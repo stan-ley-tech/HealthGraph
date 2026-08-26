@@ -7,7 +7,6 @@ from app.api.graphql.context import get_graphql_context
 from app.api.graphql.schema import schema
 from app.api.rest.admin import router as admin_router
 from app.api.rest.auth import router as auth_router
-from app.cache.client import redis_client
 from app.core.config import get_settings
 from app.core.error_handlers import register_exception_handlers
 from app.core.logging import configure_logging
@@ -39,7 +38,6 @@ register_exception_handlers(app)
 # it reaches any route handler.
 app.add_middleware(
     RateLimitMiddleware,
-    redis=redis_client,
     limit=settings.rate_limit_requests,
     window_seconds=settings.rate_limit_window_seconds,
 )

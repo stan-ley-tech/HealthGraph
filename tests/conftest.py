@@ -67,24 +67,6 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncIterator[httpx.AsyncClient]:
-    """An HTTP client wired to the real FastAPI app, but with the DB
-    dependency overridden to the test's transactional session — so REST
-    and GraphQL requests made through this client are rolled back at
-    the end of the test exactly like direct repository calls are.
-    """
-
-    async def _override_get_db_session() -> AsyncIterator[AsyncSession]:
-        yield db_session
-
-    app.dependency_overrides[get_db_session] = _override_get_db_session
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http_client:
-        yield http_client
-    app.dependency_overrides.clear()
-
-
-@pytest_asyncio.fixture
 async def redis_client() -> AsyncIterator[Redis]:
     """Own client per test, for the same reason `db_session` uses its own
     engine: a shared async client's connections bind to the event loop
@@ -95,6 +77,38 @@ async def redis_client() -> AsyncIterator[Redis]:
         yield client
     finally:
         await client.aclose()
+
+
+@pytest_asyncio.fixture
+async def client(
+    db_session: AsyncSession, redis_client: Redis
+) -> AsyncIterator[httpx.AsyncClient]:
+    """An HTTP client wired to the real FastAPI app, but with the DB
+    dependency overridden to the test's transactional session — so REST
+    and GraphQL requests made through this client are rolled back at
+    the end of the test exactly like direct repository calls are.
+
+    Also swaps the process-wide `app.cache.client.redis_client` for this
+    test's own client, for the request's whole duration: the rate-limit
+    middleware and GraphQL cache both read that module attribute live
+    (see `app.middleware.rate_limit` and `app.api.graphql.context`)
+    rather than capturing it once, specifically so this swap is possible.
+    """
+    import app.cache.client as cache_client_module
+
+    async def _override_get_db_session() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    original_redis_client = cache_client_module.redis_client
+    cache_client_module.redis_client = redis_client
+    app.dependency_overrides[get_db_session] = _override_get_db_session
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http_client:
+            yield http_client
+    finally:
+        app.dependency_overrides.clear()
+        cache_client_module.redis_client = original_redis_client
 
 
 @pytest.fixture

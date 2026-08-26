@@ -18,6 +18,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+import app.cache.client as cache_client_module
+
 
 class SlidingWindowRateLimiter:
     def __init__(self, redis: Redis, *, limit: int, window_seconds: int) -> None:
@@ -60,21 +62,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         *,
-        redis: Redis,
         limit: int,
         window_seconds: int,
         exempt_paths: frozenset[str] = frozenset({"/health"}),
     ) -> None:
         super().__init__(app)
-        self.limiter = SlidingWindowRateLimiter(redis, limit=limit, window_seconds=window_seconds)
+        self.limit = limit
+        self.window_seconds = window_seconds
         self.exempt_paths = exempt_paths
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in self.exempt_paths:
             return await call_next(request)
 
+        # Read the client through the module rather than capturing it as
+        # a constructor argument: the middleware instance is built once,
+        # at app startup, and held onto for the app's whole lifetime — a
+        # captured reference would go stale wherever the client itself is
+        # ever swapped out (as the test suite does, to keep every async
+        # resource on the event loop actually running it).
+        limiter = SlidingWindowRateLimiter(
+            cache_client_module.redis_client,
+            limit=self.limit,
+            window_seconds=self.window_seconds,
+        )
         identity = self._resolve_identity(request)
-        allowed, remaining = await self.limiter.check(identity)
+        allowed, remaining = await limiter.check(identity)
 
         if not allowed:
             return JSONResponse(
@@ -85,7 +98,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                         "message": "Too many requests. Please slow down.",
                     }
                 },
-                headers={"Retry-After": str(self.limiter.window_seconds)},
+                headers={"Retry-After": str(self.window_seconds)},
             )
 
         response = await call_next(request)

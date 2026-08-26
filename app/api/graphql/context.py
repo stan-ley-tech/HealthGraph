@@ -14,10 +14,10 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from strawberry.fastapi import BaseContext
 
+import app.cache.client as cache_client_module
 from app.api.graphql.dataloaders import DataLoaders, build_dataloaders
 from app.auth.tokens import decode_access_token
 from app.cache.cache_service import CacheService
-from app.cache.client import redis_client
 from app.core.errors import AuthenticationError
 from app.database.session import get_db_session
 from app.domain.access_policy import PatientAccessPolicy
@@ -30,7 +30,9 @@ from app.services.auth_service import AuthService
 class GraphQLContext(BaseContext):
     session: AsyncSession
     current_user: CurrentUser | None
-    cache: CacheService = field(default_factory=lambda: CacheService(redis_client))
+    cache: CacheService = field(
+        default_factory=lambda: CacheService(cache_client_module.redis_client)
+    )
     loaders: DataLoaders = field(init=False)
     access_policy: PatientAccessPolicy = field(init=False)
 
