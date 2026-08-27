@@ -17,12 +17,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --user -r requirements.txt
+RUN pip install -r requirements.txt
 
 FROM base AS runtime
 
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+# Copying /usr/local (not a --user install under /root) so the
+# non-root user below can actually execute what's installed here:
+# /root is 0700, unreadable to anyone but root, which silently breaks
+# a `pip install --user` + USER-switch combination at container start
+# rather than at build time.
+COPY --from=builder /usr/local /usr/local
 
 COPY app ./app
 COPY migrations ./migrations
