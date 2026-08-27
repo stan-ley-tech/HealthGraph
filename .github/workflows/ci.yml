@@ -74,3 +74,63 @@ jobs:
         with:
           name: coverage-xml
           path: coverage.xml
+
+  docker:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: healthgraph
+          POSTGRES_PASSWORD: healthgraph
+          POSTGRES_DB: healthgraph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U healthgraph"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the runtime image
+        run: docker build -t healthgraph:ci --target runtime .
+
+      - name: Boot the container and check it actually serves traffic
+        # --network host so the container reaches the service containers
+        # at localhost, same as the runner. This is what caught a real
+        # bug once: the image built cleanly but crashed on start because
+        # the non-root user it switches to couldn't read a `pip install
+        # --user` layer copied in from `/root` — a failure only visible
+        # at container start, never at build time.
+        run: |
+          docker run -d --name healthgraph-ci --network host \
+            -e DATABASE_URL=postgresql+asyncpg://healthgraph:healthgraph@localhost:5432/healthgraph \
+            -e REDIS_URL=redis://localhost:6379/0 \
+            -e SECRET_KEY=ci-test-secret-key-not-for-production \
+            healthgraph:ci
+
+          for _ in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health; then
+              echo "container is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "container did not become healthy in time"
+          docker logs healthgraph-ci
+          exit 1
